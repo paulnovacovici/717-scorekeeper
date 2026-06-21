@@ -1,0 +1,19 @@
+{
+  "name": "717-scorekeeper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A modern score tracker for Seven One Seven card games.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "backup": "node scripts/backup.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.0"
+  }
+}

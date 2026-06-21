@@ -1,0 +1,41 @@
+[Unit]
+Description=Cloudflare Tunnel for Seven One Seven Scorekeeper
+After=network-online.target 717-scorekeeper.service
+Wants=network-online.target
+Requires=717-scorekeeper.service
+
+[Service]
+Type=notify
+User=paul
+Group=paul
+TimeoutStartSec=0
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate --config /home/paul/projects/717-scorekeeper/deploy/cloudflared-717-config.yml tunnel run
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+InaccessiblePaths=/home/paul/projects/717-scorekeeper/data -/home/paul/.ssh -/home/paul/.gnupg
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RemoveIPC=true
+ProtectProc=invisible
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

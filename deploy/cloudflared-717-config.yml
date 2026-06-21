@@ -1,0 +1,10 @@
+tunnel: 7a064400-1291-4d47-b7e6-6bd2d17b8865
+credentials-file: /home/paul/.cloudflared/717-scorekeeper.json
+
+ingress:
+  - hostname: 717.novacovici.dev
+    service: http://127.0.0.1:7170
+    originRequest:
+      connectTimeout: 10s
+      noHappyEyeballs: false
+  - service: http_status:404

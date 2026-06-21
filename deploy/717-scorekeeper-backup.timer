@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Seven One Seven SQLite backup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+Unit=717-scorekeeper-backup.service
+
+[Install]
+WantedBy=timers.target

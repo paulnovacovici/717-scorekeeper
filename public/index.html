@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d0f">
+  <meta name="description" content="A fast, modern scorekeeper for Seven One Seven card games. Track scores, wins, losses, and game history with your regular group.">
+  <meta name="application-name" content="Seven One Seven Scorekeeper">
+  <link rel="canonical" href="https://717.novacovici.dev/">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Seven One Seven Scorekeeper">
+  <meta property="og:logo" content="https://717.novacovici.dev/apple-touch-icon.png">
+  <meta property="og:title" content="Seven One Seven Scorekeeper">
+  <meta property="og:description" content="Keep score. Track wins. Settle the table.">
+  <meta property="og:url" content="https://717.novacovici.dev/">
+  <meta property="og:image" content="https://717.novacovici.dev/og-seven-one-seven.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Seven One Seven Scorekeeper on a dark card-table background">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Seven One Seven Scorekeeper">
+  <meta name="twitter:description" content="Keep score. Track wins. Settle the table.">
+  <meta name="twitter:image" content="https://717.novacovici.dev/og-seven-one-seven.png">
+  <meta name="twitter:image:alt" content="Seven One Seven Scorekeeper on a dark card-table background">
+  <title>Seven One Seven</title>
+  <link rel="stylesheet" href="/styles.css?v=20260621-3">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="topbar shell">
+    <button class="brand" data-action="home" aria-label="Go home">
+      <span class="brand-mark"><i>7</i><i>1</i><i>7</i></span>
+      <span><strong>Seven One Seven</strong><small>Scorekeeper</small></span>
+    </button>
+    <button class="button button-primary" data-action="open-group"><span class="plus">+</span> New group</button>
+  </header>
+  <main id="app" class="shell"></main>
+
+  <dialog id="group-dialog" class="dialog">
+    <form id="group-form" method="dialog">
+      <div class="dialog-head"><div><span class="eyebrow">New table</span><h2>Create a group</h2></div><button type="button" class="icon-button" data-action="close-group" aria-label="Close create group dialog">×</button></div>
+      <label class="field"><span>Group name</span><input name="name" placeholder="Friday night crew" autocomplete="off" required></label>
+      <div class="field"><span>Players</span><div id="player-fields" class="player-fields"></div></div>
+      <button type="button" class="text-button" data-action="add-player">+ Add another player</button>
+      <p class="form-error" id="group-error"></p>
+      <button class="button button-primary button-wide" value="default">Create group</button>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/app.js?v=20260621-3" defer></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+[Unit]
+Description=Back up Seven One Seven SQLite database
+After=717-scorekeeper.service
+
+[Service]
+Type=oneshot
+User=paul
+Group=paul
+WorkingDirectory=/home/paul/projects/717-scorekeeper
+Environment=DB_PATH=/home/paul/projects/717-scorekeeper/data/717.db
+Environment=BACKUP_RETENTION_DAYS=14
+ExecStart=/usr/bin/node scripts/backup.js
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/paul/projects/717-scorekeeper/data
+InaccessiblePaths=/home/paul/.cloudflared -/home/paul/.ssh -/home/paul/.gnupg
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native

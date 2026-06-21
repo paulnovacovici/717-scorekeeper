@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Seven One Seven Scorekeeper</title>
+  <desc id="desc">Keep score, track wins, and settle the table.</desc>
+  <defs>
+    <linearGradient id="background" x1="90" y1="20" x2="1110" y2="610" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171d19"/>
+      <stop offset=".48" stop-color="#0b0d0f"/>
+      <stop offset="1" stop-color="#080a0b"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#252b2e"/>
+      <stop offset="1" stop-color="#101315"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop stop-color="#c8ff55" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#c8ff55" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000" flood-opacity=".5"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#background)"/>
+  <circle cx="1025" cy="90" r="410" fill="url(#glow)" opacity=".42"/>
+  <circle cx="105" cy="610" r="280" fill="#4ed7ff" opacity=".025"/>
+  <path d="M0 505 C240 450 330 570 565 515 S920 390 1200 470 V630 H0Z" fill="#c8ff55" opacity=".025"/>
+
+  <g transform="translate(92 78)">
+    <rect x="0" y="0" width="58" height="4" rx="2" fill="#c8ff55"/>
+    <text x="0" y="78" fill="#c8ff55" font-family="Arial, sans-serif" font-size="19" font-weight="700" letter-spacing="5">CARDS DOWN. SCORES UP.</text>
+    <text x="0" y="204" fill="#f4f5f2" font-family="Arial, sans-serif" font-size="84" font-weight="700" letter-spacing="-4">Seven One Seven</text>
+    <text x="0" y="282" fill="#8f989b" font-family="Arial, sans-serif" font-size="43" font-weight="500" letter-spacing="-1">Scorekeeper</text>
+    <text x="0" y="382" fill="#c3c9c7" font-family="Arial, sans-serif" font-size="28">Keep score. Track wins. Settle the table.</text>
+  </g>
+
+  <g transform="translate(875 170)" filter="url(#shadow)" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">
+    <g transform="rotate(-8 45 125)">
+      <rect x="0" y="0" width="130" height="210" rx="22" fill="url(#card)" stroke="#414b4f" stroke-width="3"/>
+      <text x="65" y="132" fill="#c8ff55" font-size="76">7</text>
+    </g>
+    <g transform="translate(74 -30)">
+      <rect x="0" y="0" width="130" height="220" rx="22" fill="url(#card)" stroke="#566267" stroke-width="3"/>
+      <text x="65" y="136" fill="#f4f5f2" font-size="76">1</text>
+    </g>
+    <g transform="translate(150 0) rotate(8 65 105)">
+      <rect x="0" y="0" width="130" height="210" rx="22" fill="url(#card)" stroke="#414b4f" stroke-width="3"/>
+      <text x="65" y="132" fill="#c8ff55" font-size="76">7</text>
+    </g>
+  </g>
+
+  <text x="92" y="570" fill="#697276" font-family="Arial, sans-serif" font-size="20" letter-spacing="2">717.NOVACOVICI.DEV</text>
+</svg>
