@@ -25,7 +25,7 @@ The production process binds only to `127.0.0.1:7170`. Do not change it to `0.0.
 - Backup retention: 14 days
 - Backup command: `npm run backup`
 
-Active games use `game_rounds` for hand number, card count, direction, first caller, and completion state. `round_bids` stores each player's bid and exact-hit flag. `game_scores` is the running total; completed hits are also written to `score_events` for compatibility with historical data.
+Active games use `game_rounds` for hand number, card count, direction, first caller, and completion state. The browser keeps the current hand's bids and exact-hit flags locally, then submits them with `/round/complete`; `round_bids` stores that completed hand atomically. `game_scores` is the running total; completed hits are also written to `score_events` for compatibility with historical data.
 
 ## Game Rules
 
@@ -36,7 +36,7 @@ Active games use `game_rounds` for hand number, card count, direction, first cal
 - An exact hit scores `10 + bid^2`; a miss scores zero. Changing a bid clears its hit flag.
 - After hand 13, a unique leader wins. A tie creates additional seven-card tiebreaker hands until there is a unique leader.
 
-Round write endpoints are `POST /api/games/:id/round/bids`, `/round/hit`, `/round/caller`, and `/round/complete`. Every POST handler with a request body must consume it before responding; WebKit can stall a keep-alive connection when a body is left unread.
+Round write endpoints are `POST /api/games/:id/round/caller` and `/round/complete`. The UI changes bids and hit flags without a request and sends the full draft to `/round/complete`. Every POST handler with a request body must consume it before responding; WebKit can stall a keep-alive connection when a body is left unread.
 
 Never replace or delete the live database, WAL, or SHM files while the application service is running. Before a manual restore, stop the application, preserve the current database, replace the database from a verified backup, remove stale WAL/SHM files, restore ownership and mode, and start the service again.
 

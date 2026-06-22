@@ -51,16 +51,6 @@ async function handleApi(request, response, url) {
   const gameMatch = url.pathname.match(/^\/api\/games\/(\d+)$/);
   if (method === "GET" && gameMatch) return sendJson(response, 200, dbApi.getGame(db, gameMatch[1]));
   if (method === "DELETE" && gameMatch) { dbApi.deleteGame(db, gameMatch[1]); return sendJson(response, 200, { ok: true }); }
-  const bidsMatch = url.pathname.match(/^\/api\/games\/(\d+)\/round\/bids$/);
-  if (method === "POST" && bidsMatch) {
-    const body = await readJson(request);
-    return sendJson(response, 200, dbApi.setRoundBid(db, bidsMatch[1], body.playerId, body.bid));
-  }
-  const hitMatch = url.pathname.match(/^\/api\/games\/(\d+)\/round\/hit$/);
-  if (method === "POST" && hitMatch) {
-    const body = await readJson(request);
-    return sendJson(response, 200, dbApi.setRoundHit(db, hitMatch[1], body.playerId, body.hit));
-  }
   const callerMatch = url.pathname.match(/^\/api\/games\/(\d+)\/round\/caller$/);
   if (method === "POST" && callerMatch) {
     const body = await readJson(request);
@@ -68,8 +58,8 @@ async function handleApi(request, response, url) {
   }
   const completeRoundMatch = url.pathname.match(/^\/api\/games\/(\d+)\/round\/complete$/);
   if (method === "POST" && completeRoundMatch) {
-    await readJson(request);
-    return sendJson(response, 200, dbApi.completeRound(db, completeRoundMatch[1]));
+    const body = await readJson(request);
+    return sendJson(response, 200, dbApi.completeRound(db, completeRoundMatch[1], body.bids));
   }
   sendJson(response, 404, { error: "Route not found." });
 }

@@ -4,6 +4,8 @@ const groupForm = document.querySelector("#group-form");
 const playerFields = document.querySelector("#player-fields");
 const groupCloseButton = document.querySelector('[data-action="close-group"]');
 let route = { page: "home" };
+let currentGame = null;
+const roundDrafts = new Map();
 const trickPoints = [10, 11, 14, 19, 26, 35, 46, 59];
 
 const icons = {
@@ -77,6 +79,8 @@ function gameRow(game, number) {
 
 function renderGame(game) {
   const active = game.status === "active";
+  currentGame = game;
+  if (active) applyRoundDraft(game);
   app.innerHTML = `<section class="game-page"><button class="back" data-action="view-group" data-id="${game.group_id}">${icons.back} ${escapeHtml(game.group_name)}</button>
     <div class="game-head"><div><span class="eyebrow">${active?"Game in progress":"Final score"}</span><h1>${escapeHtml(game.group_name)}</h1><p>${formatDate(game.started_at)}</p></div><span class="live-badge">${active?"● Live":"Complete"}</span></div>
     ${active ? renderActiveRound(game) : `<section class="scoreboard">${game.totals.map(total=>`<div class="score-total"><div class="total-player"><span class="mini-avatar">${initials(total.name)}</span>${escapeHtml(total.name)}${game.winner_id===total.player_id?` <span class="status">Winner</span>`:""}</div><div class="total-value">${total.score}<small>pts</small></div></div>`).join("")}<div class="complete-banner"><div class="winner-icon">◆</div><h2>${escapeHtml(game.winner_name)} takes the game</h2><p>The result is saved to ${escapeHtml(game.group_name)}’s record.</p></div></section>${roundHistory(game)}`}
@@ -105,9 +109,9 @@ function roundProgress(roundNumber) {
 }
 
 function roundPlayerCard(total,game) {
-  const bid=game.round.bids.find(item=>item.player_id===total.player_id);
-  const hit=Boolean(bid?.hit);
-  return `<article class="round-player-card ${hit?"is-hit":""}"><div class="round-player-head"><div class="total-player"><span class="mini-avatar">${initials(total.name)}</span><div><strong>${escapeHtml(total.name)}</strong><small>${total.score} total points</small></div></div>${hit?`<span class="hit-badge">✓ Hit</span>`:""}</div>
+  const bid = game.round.bids.find(item => item.player_id === total.player_id);
+  const hit = Boolean(bid?.hit);
+  return `<article class="round-player-card ${hit?"is-hit":""}"><div class="round-player-head"><div class="total-player"><span class="mini-avatar">${initials(total.name)}</span><div><strong>${escapeHtml(total.name)}</strong></div></div><div class="player-score"><span class="score-value">${total.score}</span></div>${hit?`<span class="hit-badge">✓ Hit</span>`:""}</div>
     <div class="bid-label"><span>Bid tricks</span>${bid?.bid!==null?`<strong>${hit?`+${trickPoints[bid.bid]} points if completed`:"Bid set"}</strong>`:"<strong>Choose one</strong>"}</div>
     <div class="bid-grid">${trickPoints.slice(0,game.round.card_count+1).map((points,tricks)=>`<button class="bid-card ${bid?.bid===tricks?"is-selected":""} ${bid?.bid===tricks&&hit?"is-hit":""}" data-action="set-bid" data-game="${game.id}" data-player="${total.player_id}" data-bid="${tricks}" aria-pressed="${bid?.bid===tricks}"><strong>${tricks}</strong><span>${plural(tricks,"trick")}</span><small>+${points}</small></button>`).join("")}</div>
     <button class="hit-toggle ${hit?"is-active":""}" data-action="toggle-hit" data-game="${game.id}" data-player="${total.player_id}" data-hit="${hit?"0":"1"}" ${bid?.bid===null?"disabled":""}><span class="hit-check">${hit?"✓":""}</span>${hit?"Bid hit exactly":"Mark bid as hit"}</button></article>`;
@@ -119,10 +123,12 @@ function roundHistory(game) {
 }
 
 async function startGame(groupId) { try { const game=await api(`/api/groups/${groupId}/games`,{method:"POST"}); navigate(`/games/${game.id}`); } catch(error){toast(error.message,true)} }
-async function setRoundBid(button){button.disabled=true;try{renderGame(await api(`/api/games/${button.dataset.game}/round/bids`,{method:"POST",body:JSON.stringify({playerId:Number(button.dataset.player),bid:Number(button.dataset.bid)})}))}catch(error){toast(error.message,true);button.disabled=false}}
-async function toggleRoundHit(button){button.disabled=true;try{renderGame(await api(`/api/games/${button.dataset.game}/round/hit`,{method:"POST",body:JSON.stringify({playerId:Number(button.dataset.player),hit:button.dataset.hit==="1"})}))}catch(error){toast(error.message,true);button.disabled=false}}
+function roundDraftKey(game){return `${game.id}:${game.round.id}`}
+function applyRoundDraft(game){const key=roundDraftKey(game);if(!roundDrafts.has(key))roundDrafts.set(key,game.round.bids.map(bid=>({...bid})));game.round.bids=roundDrafts.get(key)}
+function setRoundBid(button){const bid=currentGame?.round?.bids.find(item=>item.player_id===Number(button.dataset.player));if(!bid)return;bid.bid=Number(button.dataset.bid);bid.hit=false;renderGame(currentGame)}
+function toggleRoundHit(button){const bid=currentGame?.round?.bids.find(item=>item.player_id===Number(button.dataset.player));if(!bid||bid.bid===null)return;bid.hit=!bid.hit;renderGame(currentGame)}
 async function setFirstCaller(button){button.disabled=true;try{const game=await api(`/api/games/${button.dataset.game}/round/caller`,{method:"POST",body:JSON.stringify({playerId:Number(button.dataset.player)})});renderGame(game);toast(`${game.round.first_caller_name} calls first`)}catch(error){toast(error.message,true);button.disabled=false}}
-async function completeRound(button){button.disabled=true;try{const game=await api(`/api/games/${button.dataset.game}/round/complete`,{method:"POST",body:"{}"});renderGame(game);toast(game.status==="complete"?`${game.winner_name} wins the game`:`Round ${game.round.round_number-1} complete`)}catch(error){toast(error.message,true);button.disabled=false}}
+async function completeRound(button){button.disabled=true;const draftKey=roundDraftKey(currentGame);const bids=currentGame.round.bids.map(({player_id,bid,hit})=>({playerId:player_id,bid,hit}));try{const game=await api(`/api/games/${button.dataset.game}/round/complete`,{method:"POST",body:JSON.stringify({bids})});roundDrafts.delete(draftKey);renderGame(game);toast(game.status==="complete"?`${game.winner_name} wins the game`:`Round ${game.round.round_number-1} complete`)}catch(error){toast(error.message,true);button.disabled=false}}
 async function deleteGame(gameId,groupId){if(!confirm("Delete this game and remove it from player records?"))return;try{await api(`/api/games/${gameId}`,{method:"DELETE"});navigate(`/groups/${groupId}`)}catch(error){toast(error.message,true)}}
 
 function openGroupDialog(){ playerFields.innerHTML=""; addPlayerField("Ellie"); addPlayerField("Paul"); groupForm.reset(); document.querySelector("#group-error").textContent=""; dialog.showModal(); setTimeout(()=>groupForm.elements.name.focus(),50) }

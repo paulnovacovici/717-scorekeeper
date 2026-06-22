@@ -195,33 +195,6 @@ function startGame(db, groupId) {
   return getGame(db, id);
 }
 
-function setRoundBid(db, gameId, playerId, bid) {
-  const game = getGame(db, gameId);
-  if (game.status !== "active") throw httpError(409, "This game is already complete.");
-  const player = game.players.find((item) => item.id === Number(playerId));
-  if (!player) throw httpError(400, "Choose a player from this game.");
-  const bidValue = Number(bid);
-  if (!Number.isInteger(bidValue) || bidValue < 0 || bidValue > game.round.card_count) {
-    throw httpError(400, `Bid must be between 0 and ${game.round.card_count}.`);
-  }
-  db.prepare(`INSERT INTO round_bids (round_id, player_id, bid, hit) VALUES (?, ?, ?, 0)
-    ON CONFLICT(round_id, player_id) DO UPDATE SET bid = excluded.bid, hit = 0`)
-    .run(game.round.id, player.id, bidValue);
-  return getGame(db, gameId);
-}
-
-function setRoundHit(db, gameId, playerId, hit) {
-  const game = getGame(db, gameId);
-  if (game.status !== "active") throw httpError(409, "This game is already complete.");
-  const player = game.players.find((item) => item.id === Number(playerId));
-  if (!player) throw httpError(400, "Choose a player from this game.");
-  const bid = game.round.bids.find((item) => item.player_id === player.id);
-  if (bid?.bid == null) throw httpError(400, `Choose ${player.name}'s bid first.`);
-  db.prepare("UPDATE round_bids SET hit = ? WHERE round_id = ? AND player_id = ?")
-    .run(hit ? 1 : 0, game.round.id, player.id);
-  return getGame(db, gameId);
-}
-
 function setFirstCaller(db, gameId, playerId) {
   const game = getGame(db, gameId);
   if (game.status !== "active") throw httpError(409, "This game is already complete.");
@@ -231,14 +204,16 @@ function setFirstCaller(db, gameId, playerId) {
   return getGame(db, gameId);
 }
 
-function completeRound(db, gameId) {
+function completeRound(db, gameId, submittedBids) {
   const game = getGame(db, gameId);
   if (game.status !== "active") throw httpError(409, "This game is already complete.");
-  const missing = game.round.bids.filter((item) => item.bid === null);
-  if (missing.length) throw httpError(400, `Choose a bid for ${missing.map((item) => item.name).join(", ")}.`);
+  const bids = validateRoundBids(game, submittedBids);
 
   runTransaction(db, () => {
-    for (const bid of game.round.bids) {
+    for (const bid of bids) {
+      db.prepare(`INSERT INTO round_bids (round_id, player_id, bid, hit) VALUES (?, ?, ?, ?)
+        ON CONFLICT(round_id, player_id) DO UPDATE SET bid = excluded.bid, hit = excluded.hit`)
+        .run(game.round.id, bid.player_id, bid.bid, bid.hit ? 1 : 0);
       if (!bid.hit) continue;
       const points = (bid.bid * bid.bid) + 10;
       db.prepare("UPDATE game_scores SET score = score + ? WHERE game_id = ? AND player_id = ?")
@@ -262,6 +237,26 @@ function completeRound(db, gameId) {
     createRound(db, gameId, game.round.round_number + 1, nextCaller.id);
   });
   return getGame(db, gameId);
+}
+
+function validateRoundBids(game, submittedBids) {
+  if (!Array.isArray(submittedBids)) throw httpError(400, "Submit one bid for every player.");
+  const players = new Map(game.players.map((player) => [player.id, player]));
+  const seen = new Set();
+  const bids = submittedBids.map((submitted) => {
+    const playerId = Number(submitted?.playerId);
+    const player = players.get(playerId);
+    if (!player || seen.has(playerId)) throw httpError(400, "Submit one bid for every player.");
+    seen.add(playerId);
+    const bid = submitted?.bid;
+    if (!Number.isInteger(bid) || bid < 0 || bid > game.round.card_count) {
+      throw httpError(400, `Bid must be between 0 and ${game.round.card_count}.`);
+    }
+    if (typeof submitted.hit !== "boolean") throw httpError(400, "Hit status must be true or false.");
+    return { player_id: playerId, name: player.name, bid, hit: submitted.hit };
+  });
+  if (seen.size !== players.size) throw httpError(400, "Submit one bid for every player.");
+  return bids;
 }
 
 function deleteGame(db, gameId) {
@@ -334,4 +329,4 @@ function runTransaction(db, operation) {
   }
 }
 
-module.exports = { openDatabase, getDashboard, getGroup, getGame, createGroup, startGame, setRoundBid, setRoundHit, setFirstCaller, completeRound, deleteGame };
+module.exports = { openDatabase, getDashboard, getGroup, getGame, createGroup, startGame, setFirstCaller, completeRound, deleteGame };

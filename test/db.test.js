@@ -6,8 +6,6 @@ const {
   getGroup,
   createGroup,
   startGame,
-  setRoundBid,
-  setRoundHit,
   setFirstCaller,
   completeRound,
   deleteGame
@@ -32,10 +30,10 @@ test("starts at seven going down and tracks bids, hits, and caller rotation", ()
 
   game = setFirstCaller(db, game.id, paul.id);
   assert.equal(game.round.first_caller_name, "Paul");
-  game = setRoundBid(db, game.id, ellie.id, 2);
-  game = setRoundHit(db, game.id, ellie.id, true);
-  game = setRoundBid(db, game.id, paul.id, 0);
-  game = completeRound(db, game.id);
+  game = completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 2, hit: true },
+    { playerId: paul.id, bid: 0, hit: false }
+  ]);
 
   assert.deepEqual(game.totals.map((total) => total.score), [14, 0]);
   assert.deepEqual(
@@ -57,10 +55,10 @@ test("plays the full 7 down to 1 and up to 7 sequence and records the winner", (
     assert.equal(game.round.card_count, expectedCards[index]);
     assert.equal(game.round.direction, index < 7 ? "down" : "up");
     callers.push(game.round.first_caller_name);
-    game = setRoundBid(db, game.id, ellie.id, 0);
-    game = setRoundHit(db, game.id, ellie.id, true);
-    game = setRoundBid(db, game.id, paul.id, 0);
-    game = completeRound(db, game.id);
+    game = completeRound(db, game.id, [
+      { playerId: ellie.id, bid: 0, hit: true },
+      { playerId: paul.id, bid: 0, hit: false }
+    ]);
   }
 
   assert.equal(game.status, "complete");
@@ -72,18 +70,39 @@ test("plays the full 7 down to 1 and up to 7 sequence and records the winner", (
   assert.deepEqual(records, [{ wins: 1, losses: 0 }, { wins: 0, losses: 1 }]);
 });
 
-test("validates bids and resets hit status when a bid changes", () => {
+test("accepts and persists a complete round bid draft atomically", () => {
   const db = openDatabase(":memory:");
   let game = startGame(db, getDashboard(db).groups[0].id);
-  const [ellie] = game.players;
-  assert.throws(() => setRoundHit(db, game.id, ellie.id, true), /bid first/);
-  assert.throws(() => setRoundBid(db, game.id, ellie.id, 8), /between 0 and 7/);
-  assert.throws(() => completeRound(db, game.id), /Choose a bid/);
-  game = setRoundBid(db, game.id, ellie.id, 2);
-  game = setRoundHit(db, game.id, ellie.id, true);
-  assert.equal(game.round.bids[0].hit, true);
-  game = setRoundBid(db, game.id, ellie.id, 3);
-  assert.equal(game.round.bids[0].hit, false);
+  const [ellie, paul] = game.players;
+  game = completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 2, hit: true },
+    { playerId: paul.id, bid: 1, hit: false }
+  ]);
+
+  assert.deepEqual(game.totals.map((total) => total.score), [14, 0]);
+  assert.deepEqual(game.round_history[0].bids.map(({ bid, hit }) => ({ bid, hit })), [
+    { bid: 2, hit: true },
+    { bid: 1, hit: false }
+  ]);
+});
+
+test("rejects incomplete or invalid round bid drafts without persisting them", () => {
+  const db = openDatabase(":memory:");
+  const game = startGame(db, getDashboard(db).groups[0].id);
+  const [ellie, paul] = game.players;
+
+  assert.throws(() => completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 2, hit: true }
+  ]), /one bid for every player/);
+  assert.throws(() => completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 8, hit: true },
+    { playerId: paul.id, bid: 1, hit: false }
+  ]), /between 0 and 7/);
+  assert.throws(() => completeRound(db, game.id, [
+    { playerId: ellie.id, bid: null, hit: true },
+    { playerId: paul.id, bid: 1, hit: false }
+  ]), /between 0 and 7/);
+  assert.equal(game.round.bids.every((bid) => bid.bid === null), true);
 });
 
 test("creates seven-card tiebreakers after round thirteen until there is a leader", () => {
@@ -91,19 +110,20 @@ test("creates seven-card tiebreakers after round thirteen until there is a leade
   let game = startGame(db, getDashboard(db).groups[0].id);
   const [ellie, paul] = game.players;
   for (let round = 1; round <= 13; round += 1) {
-    game = setRoundBid(db, game.id, ellie.id, 0);
-    game = setRoundBid(db, game.id, paul.id, 0);
-    game = completeRound(db, game.id);
+    game = completeRound(db, game.id, [
+      { playerId: ellie.id, bid: 0, hit: false },
+      { playerId: paul.id, bid: 0, hit: false }
+    ]);
   }
   assert.equal(game.status, "active");
   assert.deepEqual(
     { number: game.round.round_number, cards: game.round.card_count, direction: game.round.direction },
     { number: 14, cards: 7, direction: "tiebreaker" }
   );
-  game = setRoundBid(db, game.id, ellie.id, 1);
-  game = setRoundHit(db, game.id, ellie.id, true);
-  game = setRoundBid(db, game.id, paul.id, 0);
-  game = completeRound(db, game.id);
+  game = completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 1, hit: true },
+    { playerId: paul.id, bid: 0, hit: false }
+  ]);
   assert.equal(game.status, "complete");
   assert.equal(game.winner_name, "Ellie");
 });
