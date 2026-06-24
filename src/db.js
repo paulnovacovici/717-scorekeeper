@@ -204,8 +204,17 @@ function setFirstCaller(db, gameId, playerId) {
   return getGame(db, gameId);
 }
 
-function completeRound(db, gameId, submittedBids) {
+function completeRound(db, gameId, submittedBids, submittedRoundId) {
   const game = getGame(db, gameId);
+  const roundId = normalizeRoundId(submittedRoundId);
+  if (roundId !== null && game.round?.id !== roundId) {
+    const latestRound = game.round_history[0];
+    if (latestRound?.id === roundId) {
+      const retryBids = validateSubmittedBids(game.players, submittedBids, latestRound.card_count);
+      if (roundBidsMatch(latestRound.bids, retryBids)) return game;
+    }
+    throw httpError(409, "This round is no longer active.");
+  }
   if (game.status !== "active") throw httpError(409, "This game is already complete.");
   const bids = validateRoundBids(game, submittedBids);
 
@@ -239,9 +248,37 @@ function completeRound(db, gameId, submittedBids) {
   return getGame(db, gameId);
 }
 
+function undoRound(db, gameId) {
+  const game = getGame(db, gameId);
+  const latestRound = game.round_history[0];
+  if (!latestRound) throw httpError(409, "There are no completed rounds to undo.");
+
+  runTransaction(db, () => {
+    db.prepare("UPDATE games SET status = 'active', winner_id = NULL, completed_at = NULL WHERE id = ?").run(gameId);
+    db.prepare("DELETE FROM game_rounds WHERE game_id = ? AND completed_at IS NULL AND round_number > ?")
+      .run(gameId, latestRound.round_number);
+    for (const bid of latestRound.bids) {
+      if (!bid.hit) continue;
+      const points = (bid.bid * bid.bid) + 10;
+      db.prepare("UPDATE game_scores SET score = score - ? WHERE game_id = ? AND player_id = ?")
+        .run(points, gameId, bid.player_id);
+      db.prepare(`DELETE FROM score_events WHERE id = (
+        SELECT id FROM score_events WHERE game_id = ? AND player_id = ? AND tricks = ? AND points = ?
+        ORDER BY id DESC LIMIT 1
+      )`).run(gameId, bid.player_id, bid.bid, points);
+    }
+    db.prepare("UPDATE game_rounds SET completed_at = NULL WHERE id = ?").run(latestRound.id);
+  });
+  return getGame(db, gameId);
+}
+
 function validateRoundBids(game, submittedBids) {
+  return validateSubmittedBids(game.players, submittedBids, game.round.card_count);
+}
+
+function validateSubmittedBids(playersList, submittedBids, cardCount) {
   if (!Array.isArray(submittedBids)) throw httpError(400, "Submit one bid for every player.");
-  const players = new Map(game.players.map((player) => [player.id, player]));
+  const players = new Map(playersList.map((player) => [player.id, player]));
   const seen = new Set();
   const bids = submittedBids.map((submitted) => {
     const playerId = Number(submitted?.playerId);
@@ -249,14 +286,29 @@ function validateRoundBids(game, submittedBids) {
     if (!player || seen.has(playerId)) throw httpError(400, "Submit one bid for every player.");
     seen.add(playerId);
     const bid = submitted?.bid;
-    if (!Number.isInteger(bid) || bid < 0 || bid > game.round.card_count) {
-      throw httpError(400, `Bid must be between 0 and ${game.round.card_count}.`);
+    if (!Number.isInteger(bid) || bid < 0 || bid > cardCount) {
+      throw httpError(400, `Bid must be between 0 and ${cardCount}.`);
     }
     if (typeof submitted.hit !== "boolean") throw httpError(400, "Hit status must be true or false.");
     return { player_id: playerId, name: player.name, bid, hit: submitted.hit };
   });
   if (seen.size !== players.size) throw httpError(400, "Submit one bid for every player.");
   return bids;
+}
+
+function normalizeRoundId(value) {
+  if (value === undefined || value === null) return null;
+  const roundId = Number(value);
+  if (!Number.isInteger(roundId)) throw httpError(400, "Round id must be an integer.");
+  return roundId;
+}
+
+function roundBidsMatch(storedBids, submittedBids) {
+  const submitted = new Map(submittedBids.map((bid) => [bid.player_id, bid]));
+  return storedBids.length === submittedBids.length && storedBids.every((stored) => {
+    const bid = submitted.get(stored.player_id);
+    return bid && stored.bid === bid.bid && stored.hit === bid.hit;
+  });
 }
 
 function deleteGame(db, gameId) {
@@ -329,4 +381,4 @@ function runTransaction(db, operation) {
   }
 }
 
-module.exports = { openDatabase, getDashboard, getGroup, getGame, createGroup, startGame, setFirstCaller, completeRound, deleteGame };
+module.exports = { openDatabase, getDashboard, getGroup, getGame, createGroup, startGame, setFirstCaller, completeRound, undoRound, deleteGame };

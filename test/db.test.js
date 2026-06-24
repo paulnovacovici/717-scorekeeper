@@ -8,6 +8,7 @@ const {
   startGame,
   setFirstCaller,
   completeRound,
+  undoRound,
   deleteGame
 } = require("../src/db");
 
@@ -86,6 +87,71 @@ test("accepts and persists a complete round bid draft atomically", () => {
   ]);
 });
 
+test("treats a retry for an already completed round as idempotent", () => {
+  const db = openDatabase(":memory:");
+  let game = startGame(db, getDashboard(db).groups[0].id);
+  const roundId = game.round.id;
+  const [ellie, paul] = game.players;
+  const bids = [
+    { playerId: ellie.id, bid: 2, hit: true },
+    { playerId: paul.id, bid: 1, hit: false }
+  ];
+
+  game = completeRound(db, game.id, bids, roundId);
+  game = completeRound(db, game.id, bids, roundId);
+
+  assert.equal(game.round.round_number, 2);
+  assert.equal(game.round_history.length, 1);
+  assert.deepEqual(game.totals.map((total) => total.score), [14, 0]);
+});
+
+test("rejects a stale round completion that does not match the latest completed round", () => {
+  const db = openDatabase(":memory:");
+  let game = startGame(db, getDashboard(db).groups[0].id);
+  const firstRoundId = game.round.id;
+  const [ellie, paul] = game.players;
+  game = completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 2, hit: true },
+    { playerId: paul.id, bid: 1, hit: false }
+  ], firstRoundId);
+  game = completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 1, hit: true },
+    { playerId: paul.id, bid: 1, hit: false }
+  ], game.round.id);
+
+  assert.throws(() => completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 2, hit: true },
+    { playerId: paul.id, bid: 1, hit: false }
+  ], firstRoundId), /no longer active/);
+  assert.deepEqual(game.totals.map((total) => total.score), [25, 0]);
+});
+
+test("undoes the latest completed round and reopens its bid draft", () => {
+  const db = openDatabase(":memory:");
+  let game = startGame(db, getDashboard(db).groups[0].id);
+  const [ellie, paul] = game.players;
+  game = completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 2, hit: true },
+    { playerId: paul.id, bid: 1, hit: false }
+  ]);
+
+  assert.deepEqual(game.totals.map((total) => total.score), [14, 0]);
+  assert.equal(game.round.round_number, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM score_events").get().count, 1);
+
+  game = undoRound(db, game.id);
+
+  assert.equal(game.status, "active");
+  assert.equal(game.round.round_number, 1);
+  assert.deepEqual(game.totals.map((total) => total.score), [0, 0]);
+  assert.deepEqual(game.round.bids.map(({ bid, hit }) => ({ bid, hit })), [
+    { bid: 2, hit: true },
+    { bid: 1, hit: false }
+  ]);
+  assert.equal(game.round_history.length, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM score_events").get().count, 0);
+});
+
 test("rejects incomplete or invalid round bid drafts without persisting them", () => {
   const db = openDatabase(":memory:");
   const game = startGame(db, getDashboard(db).groups[0].id);
@@ -126,6 +192,53 @@ test("creates seven-card tiebreakers after round thirteen until there is a leade
   ]);
   assert.equal(game.status, "complete");
   assert.equal(game.winner_name, "Ellie");
+});
+
+test("undoes a completed final round and reactivates the game", () => {
+  const db = openDatabase(":memory:");
+  const group = getDashboard(db).groups[0];
+  let game = startGame(db, group.id);
+  const [ellie, paul] = game.players;
+  for (let round = 1; round <= 13; round += 1) {
+    game = completeRound(db, game.id, [
+      { playerId: ellie.id, bid: 0, hit: true },
+      { playerId: paul.id, bid: 0, hit: false }
+    ]);
+  }
+  assert.equal(game.status, "complete");
+  assert.deepEqual(getGroup(db, group.id).players.map(({ wins, losses }) => ({ wins, losses })), [{ wins: 1, losses: 0 }, { wins: 0, losses: 1 }]);
+
+  game = undoRound(db, game.id);
+
+  assert.equal(game.status, "active");
+  assert.equal(game.winner_id, null);
+  assert.equal(game.round.round_number, 13);
+  assert.deepEqual(game.totals.map((total) => total.score), [120, 0]);
+  assert.equal(game.round_history.length, 12);
+  assert.deepEqual(getGroup(db, group.id).players.map(({ wins, losses }) => ({ wins, losses })), [{ wins: 0, losses: 0 }, { wins: 0, losses: 0 }]);
+});
+
+test("treats a retry for the completed final round as idempotent", () => {
+  const db = openDatabase(":memory:");
+  let game = startGame(db, getDashboard(db).groups[0].id);
+  const [ellie, paul] = game.players;
+  let finalRoundId;
+  let finalBids;
+  for (let round = 1; round <= 13; round += 1) {
+    finalRoundId = game.round.id;
+    finalBids = [
+      { playerId: ellie.id, bid: 0, hit: true },
+      { playerId: paul.id, bid: 0, hit: false }
+    ];
+    game = completeRound(db, game.id, finalBids, finalRoundId);
+  }
+
+  game = completeRound(db, game.id, finalBids, finalRoundId);
+
+  assert.equal(game.status, "complete");
+  assert.equal(game.round, null);
+  assert.equal(game.round_history.length, 13);
+  assert.deepEqual(game.totals.map((total) => total.score), [130, 0]);
 });
 
 test("reuses and deletes active games", () => {

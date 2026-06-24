@@ -59,7 +59,13 @@ async function handleApi(request, response, url) {
   const completeRoundMatch = url.pathname.match(/^\/api\/games\/(\d+)\/round\/complete$/);
   if (method === "POST" && completeRoundMatch) {
     const body = await readJson(request);
-    return sendJson(response, 200, dbApi.completeRound(db, completeRoundMatch[1], body.bids));
+    if (body.roundId === undefined || body.roundId === null) throw Object.assign(new Error("Refresh and try that round again."), { status: 409 });
+    return sendJson(response, 200, dbApi.completeRound(db, completeRoundMatch[1], body.bids, body.roundId));
+  }
+  const undoRoundMatch = url.pathname.match(/^\/api\/games\/(\d+)\/round\/undo$/);
+  if (method === "POST" && undoRoundMatch) {
+    await readJson(request);
+    return sendJson(response, 200, dbApi.undoRound(db, undoRoundMatch[1]));
   }
   sendJson(response, 404, { error: "Route not found." });
 }

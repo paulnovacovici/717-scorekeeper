@@ -2,7 +2,7 @@
 
 A mobile-friendly, dark-themed score tracker for recurring groups of card players. It tracks the 13-hand down-and-up sequence, first caller, bids, exact hits, running scores, and win/loss records in SQLite.
 
-Each game runs through `7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7` cards. Players choose their bid and mark whether they hit it exactly; these choices stay in the browser until the hand is completed and saved atomically. Hits score `10 + bid²`, while misses score zero. First caller rotates automatically, and tied games continue with seven-card tiebreaker hands.
+Each game runs through `7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7` cards. Players choose their bid and mark whether they hit it exactly; these choices stay in the browser until the hand is completed and saved atomically. Round completion sends the active round ID so browser retries for an already-saved hand are idempotent. Hits score `10 + bid²`, while misses score zero. First caller rotates automatically, and tied games continue with seven-card tiebreaker hands. The latest completed hand can be undone to reopen its saved bids for correction.
 
 ## Run
 

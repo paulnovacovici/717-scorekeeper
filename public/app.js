@@ -29,6 +29,7 @@ document.addEventListener("click", async (event) => {
   if (action === "toggle-hit") return toggleRoundHit(target);
   if (action === "set-caller") return setFirstCaller(target);
   if (action === "complete-round") return completeRound(target);
+  if (action === "undo-round") return undoRound(target);
   if (action === "delete-game") return deleteGame(target.dataset.game, target.dataset.group);
 });
 
@@ -119,7 +120,7 @@ function roundPlayerCard(total,game) {
 
 function roundHistory(game) {
   if(!game.round_history?.length)return "";
-  return `<section class="round-history"><div class="recent-head"><strong>Rounds played</strong><span>${game.round_history.length}</span></div><div class="round-history-list">${game.round_history.slice(0,5).map(round=>`<div class="round-history-row"><div><strong>Round ${round.round_number}</strong><small>${round.card_count} ${plural(round.card_count,"card")} · ${round.direction==="down"?"↓ Down":round.direction==="up"?"↑ Up":"◆ Tiebreaker"}</small></div><div class="history-bids">${round.bids.map(bid=>`<span class="${bid.hit?"is-hit":""}">${escapeHtml(bid.name)} ${bid.bid}${bid.hit?` · +${trickPoints[bid.bid]}`:" · Miss"}</span>`).join("")}</div></div>`).join("")}</div></section>`;
+  return `<section class="round-history"><div class="recent-head"><strong>Rounds played</strong><div class="round-history-actions"><span>${game.round_history.length}</span><button class="undo-round-button" data-action="undo-round" data-game="${game.id}">Undo last round</button></div></div><div class="round-history-list">${game.round_history.map(round=>`<div class="round-history-row"><div><strong>Round ${round.round_number}</strong><small>${round.card_count} ${plural(round.card_count,"card")} · ${round.direction==="down"?"↓ Down":round.direction==="up"?"↑ Up":"◆ Tiebreaker"}</small></div><div class="history-bids">${round.bids.map(bid=>`<span class="${bid.hit?"is-hit":""}">${escapeHtml(bid.name)} ${bid.bid}${bid.hit?` · +${trickPoints[bid.bid]}`:" · Miss"}</span>`).join("")}</div></div>`).join("")}</div></section>`;
 }
 
 async function startGame(groupId) { try { const game=await api(`/api/groups/${groupId}/games`,{method:"POST"}); navigate(`/games/${game.id}`); } catch(error){toast(error.message,true)} }
@@ -128,7 +129,8 @@ function applyRoundDraft(game){const key=roundDraftKey(game);if(!roundDrafts.has
 function setRoundBid(button){const bid=currentGame?.round?.bids.find(item=>item.player_id===Number(button.dataset.player));if(!bid)return;bid.bid=Number(button.dataset.bid);bid.hit=false;renderGame(currentGame)}
 function toggleRoundHit(button){const bid=currentGame?.round?.bids.find(item=>item.player_id===Number(button.dataset.player));if(!bid||bid.bid===null)return;bid.hit=!bid.hit;renderGame(currentGame)}
 async function setFirstCaller(button){button.disabled=true;try{const game=await api(`/api/games/${button.dataset.game}/round/caller`,{method:"POST",body:JSON.stringify({playerId:Number(button.dataset.player)})});renderGame(game);toast(`${game.round.first_caller_name} calls first`)}catch(error){toast(error.message,true);button.disabled=false}}
-async function completeRound(button){button.disabled=true;const draftKey=roundDraftKey(currentGame);const bids=currentGame.round.bids.map(({player_id,bid,hit})=>({playerId:player_id,bid,hit}));try{const game=await api(`/api/games/${button.dataset.game}/round/complete`,{method:"POST",body:JSON.stringify({bids})});roundDrafts.delete(draftKey);renderGame(game);toast(game.status==="complete"?`${game.winner_name} wins the game`:`Round ${game.round.round_number-1} complete`)}catch(error){toast(error.message,true);button.disabled=false}}
+async function completeRound(button){button.disabled=true;const draftKey=roundDraftKey(currentGame);const roundId=currentGame.round.id;const bids=currentGame.round.bids.map(({player_id,bid,hit})=>({playerId:player_id,bid,hit}));try{const game=await api(`/api/games/${button.dataset.game}/round/complete`,{method:"POST",body:JSON.stringify({roundId,bids})});roundDrafts.delete(draftKey);renderGame(game);toast(game.status==="complete"?`${game.winner_name} wins the game`:`Round ${game.round.round_number-1} complete`)}catch(error){toast(error.message,true);button.disabled=false}}
+async function undoRound(button){button.disabled=true;try{const game=await api(`/api/games/${button.dataset.game}/round/undo`,{method:"POST"});renderGame(game);toast(`Round ${game.round.round_number} reopened`)}catch(error){toast(error.message,true);button.disabled=false}}
 async function deleteGame(gameId,groupId){if(!confirm("Delete this game and remove it from player records?"))return;try{await api(`/api/games/${gameId}`,{method:"DELETE"});navigate(`/groups/${groupId}`)}catch(error){toast(error.message,true)}}
 
 function openGroupDialog(){ playerFields.innerHTML=""; addPlayerField("Ellie"); addPlayerField("Paul"); groupForm.reset(); document.querySelector("#group-error").textContent=""; dialog.showModal(); setTimeout(()=>groupForm.elements.name.focus(),50) }
