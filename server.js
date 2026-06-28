@@ -56,6 +56,11 @@ async function handleApi(request, response, url) {
     const body = await readJson(request);
     return sendJson(response, 200, dbApi.setFirstCaller(db, callerMatch[1], body.playerId));
   }
+  const playerOrderMatch = url.pathname.match(/^\/api\/games\/(\d+)\/players\/order$/);
+  if (method === "POST" && playerOrderMatch) {
+    const body = await readJson(request);
+    return sendJson(response, 200, dbApi.reorderGamePlayers(db, playerOrderMatch[1], body.playerIds));
+  }
   const completeRoundMatch = url.pathname.match(/^\/api\/games\/(\d+)\/round\/complete$/);
   if (method === "POST" && completeRoundMatch) {
     const body = await readJson(request);

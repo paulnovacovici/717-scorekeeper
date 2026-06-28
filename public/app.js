@@ -5,6 +5,8 @@ const playerFields = document.querySelector("#player-fields");
 const groupCloseButton = document.querySelector('[data-action="close-group"]');
 let route = { page: "home" };
 let currentGame = null;
+let callerDrag = null;
+let suppressNextClick = false;
 const roundDrafts = new Map();
 const trickPoints = [10, 11, 14, 19, 26, 35, 46, 59];
 
@@ -14,6 +16,11 @@ const icons = {
 };
 
 document.addEventListener("click", async (event) => {
+  if (suppressNextClick) {
+    event.preventDefault();
+    suppressNextClick = false;
+    return;
+  }
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
@@ -33,6 +40,10 @@ document.addEventListener("click", async (event) => {
   if (action === "delete-game") return deleteGame(target.dataset.game, target.dataset.group);
 });
 
+document.addEventListener("pointerdown", startCallerOrderDrag);
+document.addEventListener("pointermove", moveCallerOrderDrag);
+document.addEventListener("pointerup", endCallerOrderDrag);
+document.addEventListener("pointercancel", cancelCallerOrderDrag);
 window.addEventListener("popstate", renderRoute);
 groupForm.addEventListener("submit", createGroup);
 dialog.addEventListener("click", closeGroupDialogFromBackdrop);
@@ -75,16 +86,18 @@ function renderGroup(group) {
 }
 
 function gameRow(game, number) {
-  return `<div class="game-row"><div class="game-main"><span class="game-number">#${number}</span><div><strong>${game.status === "active" ? `<span class="status">In progress</span>` : `${escapeHtml(game.winner_name)} won`}</strong><small>${formatDate(game.started_at)} · ${game.status === "active" ? "Tap to continue" : "Final score"}</small></div></div><div class="score-chips">${game.totals.map(t=>`<span class="score-chip">${escapeHtml(t.name)} <b>${t.score}</b></span>`).join("")}<button class="button button-quiet" data-action="view-game" data-id="${game.id}">${icons.arrow}</button></div></div>`;
+  const totals = game.status === "complete" ? rankedTotals(game.totals) : game.totals;
+  return `<div class="game-row"><div class="game-main"><span class="game-number">#${number}</span><div><strong>${game.status === "active" ? `<span class="status">In progress</span>` : `${escapeHtml(game.winner_name)} won`}</strong><small>${formatDate(game.started_at)} · ${game.status === "active" ? "Tap to continue" : "Final score"}</small></div></div><div class="score-chips">${totals.map(t=>`<span class="score-chip">${escapeHtml(t.name)} <b>${t.score}</b></span>`).join("")}<button class="button button-quiet" data-action="view-game" data-id="${game.id}">${icons.arrow}</button></div></div>`;
 }
 
 function renderGame(game) {
   const active = game.status === "active";
+  const displayTotals = active ? game.totals : rankedTotals(game.totals);
   currentGame = game;
   if (active) applyRoundDraft(game);
   app.innerHTML = `<section class="game-page"><button class="back" data-action="view-group" data-id="${game.group_id}">${icons.back} ${escapeHtml(game.group_name)}</button>
     <div class="game-head"><div><span class="eyebrow">${active?"Game in progress":"Final score"}</span><h1>${escapeHtml(game.group_name)}</h1><p>${formatDate(game.started_at)}</p></div><span class="live-badge">${active?"● Live":"Complete"}</span></div>
-    ${active ? renderActiveRound(game) : `<section class="scoreboard">${game.totals.map(total=>`<div class="score-total"><div class="total-player"><span class="mini-avatar">${initials(total.name)}</span>${escapeHtml(total.name)}${game.winner_id===total.player_id?` <span class="status">Winner</span>`:""}</div><div class="total-value">${total.score}<small>pts</small></div></div>`).join("")}<div class="complete-banner"><div class="winner-icon">◆</div><h2>${escapeHtml(game.winner_name)} takes the game</h2><p>The result is saved to ${escapeHtml(game.group_name)}’s record.</p></div></section>${roundHistory(game)}`}
+    ${active ? renderActiveRound(game) : `<section class="scoreboard">${displayTotals.map(total=>`<div class="score-total"><div class="total-player"><span class="mini-avatar">${initials(total.name)}</span>${escapeHtml(total.name)}${game.winner_id===total.player_id?` <span class="status">Winner</span>`:""}</div><div class="total-value">${total.score}<small>pts</small></div></div>`).join("")}<div class="complete-banner"><div class="winner-icon">◆</div><h2>${escapeHtml(game.winner_name)} takes the game</h2><p>The result is saved to ${escapeHtml(game.group_name)}’s record.</p></div></section>${roundHistory(game)}`}
     ${active ? "" : `<div class="finish-zone"><div><strong>Game archived</strong><p>This game counts toward player records.</p></div><button class="button button-danger" data-action="delete-game" data-game="${game.id}" data-group="${game.group_id}">Delete game</button></div>`}</section>`;
 }
 
@@ -97,7 +110,7 @@ function renderActiveRound(game) {
   return `<section class="round-dashboard">
     <div class="round-banner"><div><span class="eyebrow">${roundLabel}</span><div class="card-count"><strong>${round.card_count}</strong><span>${plural(round.card_count,"card")} each</span></div></div><div class="direction-badge"><strong>${directionIcon}</strong><span>${direction}</span></div></div>
     ${roundProgress(round.round_number)}
-    <div class="caller-panel"><div><span class="caller-label">First to call</span><small>Rotates automatically next round</small></div><div class="caller-options">${game.players.map(player=>`<button class="caller-chip ${player.id===round.first_caller_id?"is-active":""}" data-action="set-caller" data-game="${game.id}" data-player="${player.id}"><span class="mini-avatar">${initials(player.name)}</span>${escapeHtml(player.name)}</button>`).join("")}</div></div>
+    <div class="caller-panel"><div><span class="caller-label">First to call</span><small>Play order rotates each round</small></div><div class="caller-options">${game.players.map(player=>`<button type="button" class="caller-chip ${player.id===round.first_caller_id?"is-active":""}" data-action="set-caller" data-drag-caller data-game="${game.id}" data-player="${player.id}" aria-label="${escapeHtml(player.name)} in play order" title="Move in play order"><span class="mini-avatar">${initials(player.name)}</span>${escapeHtml(player.name)}</button>`).join("")}</div></div>
     <div class="round-instructions"><strong>Set each bid</strong><span>Then mark the players who hit it exactly.</span></div>
     <section class="round-player-grid">${game.totals.map(total=>roundPlayerCard(total,game)).join("")}</section>
     <div class="round-complete-zone"><div><strong>${round.round_number>=13?"Last hand ready?":"Hand finished?"}</strong><p>Hit bids score 10 + bid². Misses score zero.</p></div><button class="button button-primary complete-round-button" data-action="complete-round" data-game="${game.id}" ${allBid?"":"disabled"}>${round.round_number>=13?"Finish game":"Complete round"} <span>→</span></button></div>
@@ -124,11 +137,80 @@ function roundHistory(game) {
 }
 
 async function startGame(groupId) { try { const game=await api(`/api/groups/${groupId}/games`,{method:"POST"}); navigate(`/games/${game.id}`); } catch(error){toast(error.message,true)} }
+function rankedTotals(totals){return [...totals].sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name))}
 function roundDraftKey(game){return `${game.id}:${game.round.id}`}
 function applyRoundDraft(game){const key=roundDraftKey(game);if(!roundDrafts.has(key))roundDrafts.set(key,game.round.bids.map(bid=>({...bid})));game.round.bids=roundDrafts.get(key)}
 function setRoundBid(button){const bid=currentGame?.round?.bids.find(item=>item.player_id===Number(button.dataset.player));if(!bid)return;bid.bid=Number(button.dataset.bid);bid.hit=false;renderGame(currentGame)}
 function toggleRoundHit(button){const bid=currentGame?.round?.bids.find(item=>item.player_id===Number(button.dataset.player));if(!bid||bid.bid===null)return;bid.hit=!bid.hit;renderGame(currentGame)}
 async function setFirstCaller(button){button.disabled=true;try{const game=await api(`/api/games/${button.dataset.game}/round/caller`,{method:"POST",body:JSON.stringify({playerId:Number(button.dataset.player)})});renderGame(game);toast(`${game.round.first_caller_name} calls first`)}catch(error){toast(error.message,true);button.disabled=false}}
+function startCallerOrderDrag(event){
+  const chip=event.target.closest("[data-drag-caller]");
+  if(!chip||event.button!==0||!currentGame?.round)return;
+  event.preventDefault();
+  callerDrag={chip,gameId:chip.dataset.game,playerId:Number(chip.dataset.player),pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,dragging:false};
+  chip.setPointerCapture?.(event.pointerId);
+}
+function moveCallerOrderDrag(event){
+  if(!callerDrag||event.pointerId!==callerDrag.pointerId)return;
+  const distance=Math.hypot(event.clientX-callerDrag.startX,event.clientY-callerDrag.startY);
+  if(!callerDrag.dragging&&distance<7)return;
+  if(!callerDrag.dragging){
+    callerDrag.dragging=true;
+    callerDrag.chip.classList.add("is-dragging");
+    document.body.classList.add("is-reordering-callers");
+  }
+  event.preventDefault();
+  document.querySelectorAll(".caller-chip.is-drop-target").forEach((chip)=>chip.classList.remove("is-drop-target"));
+  const target=callerChipAtPoint(event.clientX,event.clientY);
+  if(target&&target!==callerDrag.chip)target.classList.add("is-drop-target");
+}
+function endCallerOrderDrag(event){
+  if(!callerDrag||event.pointerId!==callerDrag.pointerId)return;
+  const drag=callerDrag;
+  callerDrag=null;
+  drag.chip.releasePointerCapture?.(event.pointerId);
+  document.body.classList.remove("is-reordering-callers");
+  document.querySelectorAll(".caller-chip.is-drop-target").forEach((chip)=>chip.classList.remove("is-drop-target"));
+  event.preventDefault();
+  suppressNextClick=true;
+  setTimeout(()=>{suppressNextClick=false},0);
+  if(!drag.dragging){setFirstCaller(drag.chip);return}
+  const target=callerChipAtPoint(event.clientX,event.clientY);
+  drag.chip.classList.remove("is-dragging");
+  if(!target||target===drag.chip)return;
+  const playerIds=orderedPlayerIdsAfterDrop(drag.playerId,Number(target.dataset.player),target,event.clientX,event.clientY);
+  if(!playerIds)return;
+  reorderCallerOrder(drag.gameId,playerIds);
+}
+function cancelCallerOrderDrag(event){
+  if(!callerDrag||event.pointerId!==callerDrag.pointerId)return;
+  callerDrag.chip.classList.remove("is-dragging");
+  document.body.classList.remove("is-reordering-callers");
+  document.querySelectorAll(".caller-chip.is-drop-target").forEach((chip)=>chip.classList.remove("is-drop-target"));
+  callerDrag=null;
+}
+function callerChipAtPoint(x,y){
+  return document.elementsFromPoint(x,y).map((element)=>element.closest?.("[data-drag-caller]")).find(Boolean);
+}
+function orderedPlayerIdsAfterDrop(movedId,targetId,targetChip,x,y){
+  const current=currentGame?.players.map((player)=>player.id);
+  if(!current||!current.includes(movedId)||!current.includes(targetId))return null;
+  const next=current.filter((id)=>id!==movedId);
+  const rect=targetChip.getBoundingClientRect();
+  const after=y>rect.top+rect.height*.65||(y>=rect.top&&y<=rect.bottom&&x>rect.left+rect.width/2);
+  const targetIndex=next.indexOf(targetId);
+  next.splice(targetIndex+(after?1:0),0,movedId);
+  return next.every((id,index)=>id===current[index])?null:next;
+}
+async function reorderCallerOrder(gameId,playerIds){
+  try{
+    const game=await api(`/api/games/${gameId}/players/order`,{method:"POST",body:JSON.stringify({playerIds})});
+    renderGame(game);
+    toast(`${game.round.first_caller_name} calls first`);
+  }catch(error){
+    toast(error.message,true);
+  }
+}
 async function completeRound(button){button.disabled=true;const draftKey=roundDraftKey(currentGame);const roundId=currentGame.round.id;const bids=currentGame.round.bids.map(({player_id,bid,hit})=>({playerId:player_id,bid,hit}));try{const game=await api(`/api/games/${button.dataset.game}/round/complete`,{method:"POST",body:JSON.stringify({roundId,bids})});roundDrafts.delete(draftKey);renderGame(game);toast(game.status==="complete"?`${game.winner_name} wins the game`:`Round ${game.round.round_number-1} complete`)}catch(error){toast(error.message,true);button.disabled=false}}
 async function undoRound(button){button.disabled=true;try{const game=await api(`/api/games/${button.dataset.game}/round/undo`,{method:"POST"});renderGame(game);toast(`Round ${game.round.round_number} reopened`)}catch(error){toast(error.message,true);button.disabled=false}}
 async function deleteGame(gameId,groupId){if(!confirm("Delete this game and remove it from player records?"))return;try{await api(`/api/games/${gameId}`,{method:"DELETE"});navigate(`/groups/${groupId}`)}catch(error){toast(error.message,true)}}

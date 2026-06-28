@@ -56,6 +56,12 @@ function migrate(db) {
       score INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (game_id, player_id)
     );
+    CREATE TABLE IF NOT EXISTS game_players (
+      game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (game_id, player_id)
+    );
     CREATE TABLE IF NOT EXISTS score_events (
       id INTEGER PRIMARY KEY,
       game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -90,6 +96,9 @@ function migrate(db) {
   if (!memberColumns.includes("starting_losses")) {
     db.exec("ALTER TABLE group_members ADD COLUMN starting_losses INTEGER NOT NULL DEFAULT 0");
   }
+  db.exec(`INSERT OR IGNORE INTO game_players (game_id, player_id, position)
+    SELECT g.id, gm.player_id, gm.position
+    FROM games g JOIN group_members gm ON gm.group_id = g.group_id`);
   db.exec(`INSERT INTO game_rounds (game_id, round_number, card_count, direction, first_caller_id)
     SELECT g.id, 1, 7, 'down', (
       SELECT gm.player_id FROM group_members gm WHERE gm.group_id = g.group_id ORDER BY gm.position LIMIT 1
@@ -151,7 +160,7 @@ function getGame(db, gameId) {
     FROM games g JOIN groups gr ON gr.id = g.group_id
     LEFT JOIN players p ON p.id = g.winner_id WHERE g.id = ?`).get(gameId);
   if (!game) throw httpError(404, "Game not found.");
-  const players = getGroupPlayers(db, game.group_id);
+  const players = getGamePlayers(db, game.id, game.group_id);
   return {
     ...game,
     players,
@@ -187,6 +196,8 @@ function startGame(db, groupId) {
     const gameId = Number(db.prepare("INSERT INTO games (group_id) VALUES (?)").run(groupId).lastInsertRowid);
     const players = getGroupPlayers(db, groupId);
     players.forEach((player) => {
+      db.prepare("INSERT INTO game_players (game_id, player_id, position) VALUES (?, ?, ?)")
+        .run(gameId, player.id, player.position);
       db.prepare("INSERT INTO game_scores (game_id, player_id, score) VALUES (?, ?, 0)").run(gameId, player.id);
     });
     createRound(db, gameId, 1, players[0].id);
@@ -201,6 +212,28 @@ function setFirstCaller(db, gameId, playerId) {
   const player = game.players.find((item) => item.id === Number(playerId));
   if (!player) throw httpError(400, "Choose a player from this game.");
   db.prepare("UPDATE game_rounds SET first_caller_id = ? WHERE id = ?").run(player.id, game.round.id);
+  return getGame(db, gameId);
+}
+
+function reorderGamePlayers(db, gameId, playerIds) {
+  const game = getGame(db, gameId);
+  if (game.status !== "active") throw httpError(409, "This game is already complete.");
+  if (!Array.isArray(playerIds)) throw httpError(400, "Submit the players in play order.");
+  const ids = playerIds.map((id) => Number(id));
+  if (ids.some((id) => !Number.isInteger(id))) throw httpError(400, "Submit the players in play order.");
+  const expected = new Set(game.players.map((player) => player.id));
+  const submitted = new Set(ids);
+  if (ids.length !== game.players.length || submitted.size !== ids.length || ids.some((id) => !expected.has(id))) {
+    throw httpError(400, "Submit each player in this game exactly once.");
+  }
+
+  runTransaction(db, () => {
+    ids.forEach((playerId, position) => {
+      db.prepare("UPDATE game_players SET position = ? WHERE game_id = ? AND player_id = ?")
+        .run(position, game.id, playerId);
+    });
+    db.prepare("UPDATE game_rounds SET first_caller_id = ? WHERE id = ?").run(ids[0], game.round.id);
+  });
   return getGame(db, gameId);
 }
 
@@ -317,15 +350,23 @@ function deleteGame(db, gameId) {
 }
 
 function getGroupPlayers(db, groupId) {
-  return db.prepare(`SELECT p.id, p.name FROM players p JOIN group_members gm ON gm.player_id = p.id
+  return db.prepare(`SELECT p.id, p.name, gm.position FROM players p JOIN group_members gm ON gm.player_id = p.id
     WHERE gm.group_id = ? ORDER BY gm.position`).all(groupId);
+}
+
+function getGamePlayers(db, gameId, groupId) {
+  const players = db.prepare(`SELECT p.id, p.name, gp.position
+    FROM game_players gp JOIN players p ON p.id = gp.player_id
+    WHERE gp.game_id = ? ORDER BY gp.position`).all(gameId);
+  return players.length ? players : getGroupPlayers(db, groupId);
 }
 
 function getGameTotals(db, gameId) {
   return db.prepare(`SELECT p.id AS player_id, p.name, COALESCE(gs.score, 0) AS score
-    FROM games g JOIN group_members gm ON gm.group_id = g.group_id JOIN players p ON p.id = gm.player_id
+    FROM game_players gp JOIN players p ON p.id = gp.player_id
+    JOIN games g ON g.id = gp.game_id
     LEFT JOIN game_scores gs ON gs.game_id = g.id AND gs.player_id = p.id
-    WHERE g.id = ? ORDER BY gm.position`).all(gameId);
+    WHERE g.id = ? ORDER BY gp.position`).all(gameId);
 }
 
 function createRound(db, gameId, roundNumber, firstCallerId) {
@@ -381,4 +422,4 @@ function runTransaction(db, operation) {
   }
 }
 
-module.exports = { openDatabase, getDashboard, getGroup, getGame, createGroup, startGame, setFirstCaller, completeRound, undoRound, deleteGame };
+module.exports = { openDatabase, getDashboard, getGroup, getGame, createGroup, startGame, setFirstCaller, reorderGamePlayers, completeRound, undoRound, deleteGame };

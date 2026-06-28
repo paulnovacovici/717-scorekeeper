@@ -7,6 +7,7 @@ const {
   createGroup,
   startGame,
   setFirstCaller,
+  reorderGamePlayers,
   completeRound,
   undoRound,
   deleteGame
@@ -69,6 +70,27 @@ test("plays the full 7 down to 1 and up to 7 sequence and records the winner", (
   assert.equal(game.round_history.length, 13);
   const records = getGroup(db, group.id).players.map(({ wins, losses }) => ({ wins, losses }));
   assert.deepEqual(records, [{ wins: 1, losses: 0 }, { wins: 0, losses: 1 }]);
+});
+
+test("reorders active game play order without changing group membership order", () => {
+  const db = openDatabase(":memory:");
+  const group = createGroup(db, "Three friends", ["A", "B", "C"]);
+  let game = startGame(db, group.id);
+  const [a, b, c] = game.players;
+
+  game = reorderGamePlayers(db, game.id, [c.id, a.id, b.id]);
+
+  assert.deepEqual(game.players.map((player) => player.name), ["C", "A", "B"]);
+  assert.equal(game.round.first_caller_name, "C");
+  assert.deepEqual(getGroup(db, group.id).players.map((player) => player.name), ["A", "B", "C"]);
+
+  game = completeRound(db, game.id, [
+    { playerId: a.id, bid: 0, hit: false },
+    { playerId: b.id, bid: 0, hit: false },
+    { playerId: c.id, bid: 0, hit: false }
+  ]);
+
+  assert.equal(game.round.first_caller_name, "A");
 });
 
 test("accepts and persists a complete round bid draft atomically", () => {
