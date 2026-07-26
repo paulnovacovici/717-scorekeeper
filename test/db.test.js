@@ -21,6 +21,24 @@ test("seeds a reusable Ellie and Paul group", () => {
   assert.deepEqual(dashboard.groups[0].players.map((player) => player.name), ["Ellie", "Paul"]);
 });
 
+test("sorts dashboard groups by completed games played descending", () => {
+  const db = openDatabase(":memory:");
+  const seedGroup = getDashboard(db).groups[0];
+  const busyGroup = createGroup(db, "Busy table", ["A", "B"]);
+  const newGroup = createGroup(db, "New table", ["C", "D"]);
+
+  completeGame(db, startGame(db, seedGroup.id));
+  completeGame(db, startGame(db, busyGroup.id));
+  completeGame(db, startGame(db, busyGroup.id));
+  startGame(db, newGroup.id);
+
+  assert.deepEqual(getDashboard(db).groups.map(({ name, games_played }) => ({ name, games_played })), [
+    { name: "Busy table", games_played: 2 },
+    { name: "Ellie + Paul", games_played: 1 },
+    { name: "New table", games_played: 0 }
+  ]);
+});
+
 test("starts at seven going down and tracks bids, hits, and caller rotation", () => {
   const db = openDatabase(":memory:");
   let game = startGame(db, getDashboard(db).groups[0].id);
@@ -271,3 +289,15 @@ test("reuses and deletes active games", () => {
   deleteGame(db, game.id);
   assert.equal(getGroup(db, group.id).games.length, 0);
 });
+
+function completeGame(db, game) {
+  let current = game;
+  for (let round = 1; round <= 13; round += 1) {
+    current = completeRound(db, current.id, current.players.map((player, index) => ({
+      playerId: player.id,
+      bid: 0,
+      hit: index === 0
+    })));
+  }
+  return current;
+}

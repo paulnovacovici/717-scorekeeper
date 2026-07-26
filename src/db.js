@@ -120,7 +120,7 @@ function getDashboard(db) {
       COUNT(DISTINCT CASE WHEN ga.status = 'active' THEN ga.id END) AS active_games,
       MAX(ga.started_at) AS last_played
     FROM groups g LEFT JOIN games ga ON ga.group_id = g.id
-    GROUP BY g.id ORDER BY COALESCE(last_played, g.created_at) DESC
+    GROUP BY g.id ORDER BY games_played DESC, COALESCE(last_played, g.created_at) DESC, g.name COLLATE NOCASE
   `).all().map((group) => ({ ...group, players: getGroupPlayers(db, group.id) }));
   return {
     groups,
