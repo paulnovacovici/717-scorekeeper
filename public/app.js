@@ -112,7 +112,7 @@ function renderActiveRound(game) {
     ${roundProgress(round.round_number)}
     <div class="caller-panel"><div><span class="caller-label">First to call</span><small>Play order rotates each round</small></div><div class="caller-options">${game.players.map(player=>`<button type="button" class="caller-chip ${player.id===round.first_caller_id?"is-active":""}" data-action="set-caller" data-drag-caller data-game="${game.id}" data-player="${player.id}" aria-label="${escapeHtml(player.name)} in play order" title="Move in play order"><span class="mini-avatar">${initials(player.name)}</span>${escapeHtml(player.name)}</button>`).join("")}</div></div>
     <div class="round-instructions"><strong>Set each bid</strong><span>Then mark the players who hit it exactly.</span></div>
-    <section class="round-player-grid">${game.totals.map(total=>roundPlayerCard(total,game)).join("")}</section>
+    <section class="round-player-grid">${roundPlayTotals(game).map(total=>roundPlayerCard(total,game)).join("")}</section>
     <div class="round-complete-zone"><div><strong>${round.round_number>=13?"Last hand ready?":"Hand finished?"}</strong><p>Hit bids score 10 + bid². Misses score zero.</p></div><button class="button button-primary complete-round-button" data-action="complete-round" data-game="${game.id}" ${allBid?"":"disabled"}>${round.round_number>=13?"Finish game":"Complete round"} <span>→</span></button></div>
     ${roundHistory(game)}
   </section>`;
@@ -129,6 +129,12 @@ function roundPlayerCard(total,game) {
     <div class="bid-label"><span>Bid tricks</span>${bid?.bid!==null?`<strong>${hit?`+${trickPoints[bid.bid]} points if completed`:"Bid set"}</strong>`:"<strong>Choose one</strong>"}</div>
     <div class="bid-grid">${trickPoints.slice(0,game.round.card_count+1).map((points,tricks)=>`<button class="bid-card ${bid?.bid===tricks?"is-selected":""} ${bid?.bid===tricks&&hit?"is-hit":""}" data-action="set-bid" data-game="${game.id}" data-player="${total.player_id}" data-bid="${tricks}" aria-pressed="${bid?.bid===tricks}"><strong>${tricks}</strong><span>${plural(tricks,"trick")}</span><small>+${points}</small></button>`).join("")}</div>
     <button class="hit-toggle ${hit?"is-active":""}" data-action="toggle-hit" data-game="${game.id}" data-player="${total.player_id}" data-hit="${hit?"0":"1"}" ${bid?.bid===null?"disabled":""}><span class="hit-check">${hit?"✓":""}</span>${hit?"Bid hit exactly":"Mark bid as hit"}</button></article>`;
+}
+
+function roundPlayTotals(game) {
+  const firstIndex = game.totals.findIndex((total) => total.player_id === game.round.first_caller_id);
+  if (firstIndex <= 0) return game.totals;
+  return [...game.totals.slice(firstIndex), ...game.totals.slice(0, firstIndex)];
 }
 
 function roundHistory(game) {
