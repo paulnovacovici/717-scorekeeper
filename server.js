@@ -31,14 +31,28 @@ const server = http.createServer(async (request, response) => {
     if (url.pathname.startsWith("/api/")) return await handleApi(request, response, url);
     return serveStatic(url.pathname, response);
   } catch (error) {
-    sendJson(response, error.status || 500, { error: error.message || "Something went wrong." });
+    const status = error.status || 500;
+    logRequestError(request, error, status);
+    if (response.headersSent) {
+      response.destroy();
+      return;
+    }
+    sendJson(response, status, { error: error.message || "Something went wrong." });
   }
 });
 server.requestTimeout = 15_000;
 server.headersTimeout = 10_000;
 server.keepAliveTimeout = 5_000;
 server.maxRequestsPerSocket = 1_000;
-server.on("clientError", (_error, socket) => socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n"));
+server.on("clientError", (error, socket) => {
+  console.warn(JSON.stringify({
+    level: "warn",
+    event: "client_error",
+    code: error.code,
+    message: error.message
+  }));
+  socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+});
 
 async function handleApi(request, response, url) {
   const method = request.method;
@@ -87,6 +101,27 @@ function readJson(request) {
 function sendJson(response, status, value) {
   response.writeHead(status, { ...securityHeaders, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   response.end(JSON.stringify(value));
+}
+function logRequestError(request, error, status) {
+  const entry = {
+    level: status >= 500 ? "error" : "warn",
+    event: "request_failed",
+    method: request.method,
+    path: safePath(request),
+    status,
+    message: error.message || "Unknown error"
+  };
+  if (status >= 500 && error.stack) entry.stack = error.stack;
+  const line = JSON.stringify(entry);
+  if (status >= 500) console.error(line);
+  else console.warn(line);
+}
+function safePath(request) {
+  try {
+    return new URL(request.url, `http://${request.headers.host || "localhost"}`).pathname;
+  } catch {
+    return request.url || "";
+  }
 }
 function serveStatic(urlPath, response) {
   const requested = urlPath === "/" ? "/index.html" : urlPath;
