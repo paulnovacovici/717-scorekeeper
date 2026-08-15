@@ -171,11 +171,10 @@ function getGame(db, gameId) {
 }
 
 function createGroup(db, name, playerNames) {
-  const cleanName = String(name || "").trim();
   const names = [...new Set((playerNames || []).map((value) => String(value).trim()).filter(Boolean))];
-  if (!cleanName) throw httpError(400, "Give this group a name.");
   if (names.length < 2) throw httpError(400, "A group needs at least two players.");
   if (names.length > 8) throw httpError(400, "A group can have at most eight players.");
+  const cleanName = String(name || "").trim() || names.join(" + ");
   const groupId = runTransaction(db, () => {
     const groupId = Number(db.prepare("INSERT INTO groups (name) VALUES (?)").run(cleanName).lastInsertRowid);
     names.forEach((playerName, position) => {

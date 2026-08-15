@@ -21,6 +21,14 @@ test("seeds a reusable Ellie and Paul group", () => {
   assert.deepEqual(dashboard.groups[0].players.map((player) => player.name), ["Ellie", "Paul"]);
 });
 
+test("uses player names as the group name when no custom name is provided", () => {
+  const db = openDatabase(":memory:");
+  const group = createGroup(db, "  ", [" Ellie ", "Paul", "Marta"]);
+
+  assert.equal(group.name, "Ellie + Paul + Marta");
+  assert.deepEqual(group.players.map((player) => player.name), ["Ellie", "Paul", "Marta"]);
+});
+
 test("sorts dashboard groups by completed games played descending", () => {
   const db = openDatabase(":memory:");
   const seedGroup = getDashboard(db).groups[0];
