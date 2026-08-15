@@ -105,8 +105,10 @@ function renderGame(game) {
 function renderActiveRound(game) {
   const round=game.round;
   const allBid=round.bids.every(bid=>bid.bid!==null);
+  const bidsEqualCards=allBid&&round.bids.reduce((sum,bid)=>sum+bid.bid,0)===round.card_count;
   const orderedTotals=roundPlayTotals(game);
   const activeBid=orderedTotals.find((total)=>round.bids.find((bid)=>bid.player_id===total.player_id)?.bid===null);
+  const blockedBid=lastBidBlock(round);
   const direction=round.direction==="down"?"Going down":round.direction==="up"?"Going up":"Tiebreaker";
   const directionIcon=round.direction==="down"?"↓":round.direction==="up"?"↑":"◆";
   const roundLabel=round.round_number<=13?`Round ${round.round_number} of 13`:`Tiebreaker ${round.round_number-13}`;
@@ -115,8 +117,8 @@ function renderActiveRound(game) {
     ${roundProgress(round.round_number)}
     <div class="caller-panel"><div><span class="caller-label">First to call</span><small>Play order rotates each round</small></div><div class="caller-options">${game.players.map(player=>`<button type="button" class="caller-chip ${player.id===round.first_caller_id?"is-active":""}" data-action="set-caller" data-drag-caller data-game="${game.id}" data-player="${player.id}" aria-label="${escapeHtml(player.name)} in play order" title="Move in play order"><span class="mini-avatar">${initials(player.name)}</span>${escapeHtml(player.name)}</button>`).join("")}</div></div>
     <div class="round-instructions"><strong>Set each bid</strong><span>Then mark the players who hit it exactly.</span></div>
-    <section class="round-player-grid">${orderedTotals.map(total=>roundPlayerCard(total,game,total.player_id===activeBid?.player_id)).join("")}</section>
-    <div class="round-complete-zone"><div><strong>${round.round_number>=13?"Last hand ready?":"Hand finished?"}</strong><p>Hit bids score 10 + bid². Misses score zero.</p></div><button class="button button-primary complete-round-button" data-action="complete-round" data-game="${game.id}" ${allBid?"":"disabled"}>${round.round_number>=13?"Finish game":"Complete round"} <span>→</span></button></div>
+    <section class="round-player-grid">${orderedTotals.map(total=>roundPlayerCard(total,game,total.player_id===activeBid?.player_id,blockedBid?.playerId===total.player_id?blockedBid.bid:null)).join("")}</section>
+    <div class="round-complete-zone"><div><strong>${round.round_number>=13?"Last hand ready?":"Hand finished?"}</strong><p>Hit bids score 10 + bid². Misses score zero.</p></div><button class="button button-primary complete-round-button" data-action="complete-round" data-game="${game.id}" ${allBid&&!bidsEqualCards?"":"disabled"}>${round.round_number>=13?"Finish game":"Complete round"} <span>→</span></button></div>
     ${roundHistory(game)}
   </section>`;
 }
@@ -125,13 +127,20 @@ function roundProgress(roundNumber) {
   return `<div class="round-progress" aria-label="Round ${Math.min(roundNumber,13)} of 13">${Array.from({length:13},(_,index)=>`<span class="${index+1<roundNumber?"is-done":index+1===roundNumber?"is-current":""}"></span>`).join("")}</div>`;
 }
 
-function roundPlayerCard(total,game,isActiveBidder=false) {
+function roundPlayerCard(total,game,isActiveBidder=false,blockedBid=null) {
   const bid = game.round.bids.find(item => item.player_id === total.player_id);
   const hit = Boolean(bid?.hit);
   return `<article class="round-player-card ${hit?"is-hit":""} ${isActiveBidder?"is-active-bidder":""}"><div class="round-player-head"><div class="total-player"><span class="mini-avatar">${initials(total.name)}</span><div><strong>${escapeHtml(total.name)}</strong></div></div><div class="player-score"><span class="score-value">${total.score}</span></div>${isActiveBidder?`<span class="bid-turn-badge">To bid</span>`:hit?`<span class="hit-badge">✓ Hit</span>`:""}</div>
     <div class="bid-label"><span>Bid tricks</span>${bid?.bid!==null?`<strong>${hit?`+${trickPoints[bid.bid]} points if completed`:"Bid set"}</strong>`:"<strong>Choose one</strong>"}</div>
-    <div class="bid-grid">${trickPoints.slice(0,game.round.card_count+1).map((points,tricks)=>`<button class="bid-card ${bid?.bid===tricks?"is-selected":""} ${bid?.bid===tricks&&hit?"is-hit":""}" data-action="set-bid" data-game="${game.id}" data-player="${total.player_id}" data-bid="${tricks}" aria-pressed="${bid?.bid===tricks}"><strong>${tricks}</strong><span>${plural(tricks,"trick")}</span><small>+${points}</small></button>`).join("")}</div>
+    <div class="bid-grid">${trickPoints.slice(0,game.round.card_count+1).map((points,tricks)=>`<button class="bid-card ${bid?.bid===tricks?"is-selected":""} ${bid?.bid===tricks&&hit?"is-hit":""}" data-action="set-bid" data-game="${game.id}" data-player="${total.player_id}" data-bid="${tricks}" aria-pressed="${bid?.bid===tricks}" ${blockedBid===tricks?"disabled title=\"Total bids cannot equal cards\"":""}><strong>${tricks}</strong><span>${plural(tricks,"trick")}</span><small>${blockedBid===tricks?"No bid":`+${points}`}</small></button>`).join("")}</div>
     <button class="hit-toggle ${hit?"is-active":""}" data-action="toggle-hit" data-game="${game.id}" data-player="${total.player_id}" data-hit="${hit?"0":"1"}" ${bid?.bid===null?"disabled":""}><span class="hit-check">${hit?"✓":""}</span>${hit?"Bid hit exactly":"Mark bid as hit"}</button></article>`;
+}
+
+function lastBidBlock(round) {
+  const openBids=round.bids.filter((bid)=>bid.bid===null);
+  if(openBids.length!==1)return null;
+  const blocked=round.card_count-round.bids.reduce((sum,bid)=>sum+(bid.bid??0),0);
+  return blocked>=0&&blocked<=round.card_count?{playerId:openBids[0].player_id,bid:blocked}:null;
 }
 
 function roundPlayTotals(game) {

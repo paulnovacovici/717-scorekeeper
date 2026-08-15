@@ -305,7 +305,11 @@ function undoRound(db, gameId) {
 }
 
 function validateRoundBids(game, submittedBids) {
-  return validateSubmittedBids(game.players, submittedBids, game.round.card_count);
+  const bids = validateSubmittedBids(game.players, submittedBids, game.round.card_count);
+  if (bids.reduce((sum, bid) => sum + bid.bid, 0) === game.round.card_count) {
+    throw httpError(400, "Total bids cannot equal the number of cards.");
+  }
+  return bids;
 }
 
 function validateSubmittedBids(playersList, submittedBids, cardCount) {

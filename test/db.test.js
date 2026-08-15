@@ -219,6 +219,19 @@ test("rejects incomplete or invalid round bid drafts without persisting them", (
   assert.equal(game.round.bids.every((bid) => bid.bid === null), true);
 });
 
+test("rejects completed round bids that total the card count", () => {
+  const db = openDatabase(":memory:");
+  const game = startGame(db, getDashboard(db).groups[0].id);
+  const [ellie, paul] = game.players;
+
+  assert.throws(() => completeRound(db, game.id, [
+    { playerId: ellie.id, bid: 4, hit: false },
+    { playerId: paul.id, bid: 3, hit: false }
+  ]), /cannot equal the number of cards/);
+
+  assert.equal(game.round.bids.every((bid) => bid.bid === null), true);
+});
+
 test("creates seven-card tiebreakers after round thirteen until there is a leader", () => {
   const db = openDatabase(":memory:");
   let game = startGame(db, getDashboard(db).groups[0].id);
