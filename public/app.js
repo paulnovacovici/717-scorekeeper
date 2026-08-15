@@ -28,7 +28,7 @@ document.addEventListener("click", async (event) => {
   if (action === "open-group") return openGroupDialog();
   if (action === "close-group") return closeGroupDialog();
   if (action === "add-player") return addPlayerField();
-  if (action === "remove-player") return target.closest(".player-input").remove();
+  if (action === "remove-player") { target.closest(".player-input").remove(); return updateGroupNamePreview(); }
   if (action === "view-group") return navigate(`/groups/${target.dataset.id}`);
   if (action === "start-game") return startGame(target.dataset.id);
   if (action === "view-game") return navigate(`/games/${target.dataset.id}`);
@@ -46,6 +46,7 @@ document.addEventListener("pointerup", endCallerOrderDrag);
 document.addEventListener("pointercancel", cancelCallerOrderDrag);
 window.addEventListener("popstate", renderRoute);
 groupForm.addEventListener("submit", createGroup);
+groupForm.addEventListener("input", updateGroupNamePreview);
 dialog.addEventListener("click", closeGroupDialogFromBackdrop);
 dialog.addEventListener("pointerdown", closeGroupDialogFromBackdrop);
 groupCloseButton.addEventListener("touchend", closeGroupDialogFromTouch, { passive:false });
@@ -221,12 +222,15 @@ async function completeRound(button){button.disabled=true;const draftKey=roundDr
 async function undoRound(button){button.disabled=true;try{const game=await api(`/api/games/${button.dataset.game}/round/undo`,{method:"POST"});renderGame(game);toast(`Round ${game.round.round_number} reopened`)}catch(error){toast(error.message,true);button.disabled=false}}
 async function deleteGame(gameId,groupId){if(!confirm("Delete this game and remove it from player records?"))return;try{await api(`/api/games/${gameId}`,{method:"DELETE"});navigate(`/groups/${groupId}`)}catch(error){toast(error.message,true)}}
 
-function openGroupDialog(){ playerFields.innerHTML=""; addPlayerField("Ellie"); addPlayerField("Paul"); groupForm.reset(); document.querySelector("#group-error").textContent=""; dialog.showModal(); setTimeout(()=>groupForm.elements.name.focus(),50) }
+function openGroupDialog(){ playerFields.innerHTML=""; addPlayerField("Ellie"); addPlayerField("Paul"); groupForm.reset(); updateGroupNamePreview(); document.querySelector("#group-error").textContent=""; dialog.showModal(); setTimeout(()=>groupForm.elements.name.focus(),50) }
 function closeGroupDialog(){ if(!dialog.open)return; if(document.activeElement instanceof HTMLElement)document.activeElement.blur(); dialog.close() }
 function closeGroupDialogFromTouch(event){event.preventDefault();event.stopPropagation();closeGroupDialog()}
 function closeGroupDialogFromBackdrop(event){const point=event.changedTouches?.[0]||event;const bounds=dialog.getBoundingClientRect();const outside=point.clientX<bounds.left||point.clientX>bounds.right||point.clientY<bounds.top||point.clientY>bounds.bottom;if(outside){event.preventDefault();event.stopPropagation();closeGroupDialog()}}
-function addPlayerField(value=""){if(playerFields.children.length>=8)return;const row=document.createElement("div");row.className="player-input";row.innerHTML=`<input name="player" placeholder="Player name" value="${escapeHtml(value)}" autocomplete="off" required><button type="button" class="remove-player" data-action="remove-player" aria-label="Remove player">×</button>`;playerFields.append(row)}
-async function createGroup(event){event.preventDefault();const submitter=event.submitter;const players=[...groupForm.elements.player].map? [...groupForm.elements.player].map(i=>i.value):[groupForm.elements.player.value];try{submitter.disabled=true;const group=await api("/api/groups",{method:"POST",body:JSON.stringify({name:groupForm.elements.name.value,players})});dialog.close();navigate(`/groups/${group.id}`)}catch(error){document.querySelector("#group-error").textContent=error.message;submitter.disabled=false}}
+function addPlayerField(value=""){if(playerFields.children.length>=8)return;const row=document.createElement("div");row.className="player-input";row.innerHTML=`<input name="player" placeholder="Player name" value="${escapeHtml(value)}" autocomplete="off"><button type="button" class="remove-player" data-action="remove-player" aria-label="Remove player">×</button>`;playerFields.append(row);updateGroupNamePreview()}
+function playerFieldValues(){return [...playerFields.querySelectorAll('input[name="player"]')].map((input)=>input.value)}
+function groupNameFromPlayers(players){return players.map((value)=>String(value).trim()).filter(Boolean).join(" + ")}
+function updateGroupNamePreview(){groupForm.elements.name.placeholder=groupNameFromPlayers(playerFieldValues())||"Ellie + Paul"}
+async function createGroup(event){event.preventDefault();const submitter=event.submitter;const players=playerFieldValues();const name=groupForm.elements.name.value.trim()||groupNameFromPlayers(players);try{submitter.disabled=true;const group=await api("/api/groups",{method:"POST",body:JSON.stringify({name,players})});dialog.close();navigate(`/groups/${group.id}`)}catch(error){document.querySelector("#group-error").textContent=error.message;submitter.disabled=false}}
 async function api(url,options={}){const response=await fetch(url,{headers:{"Content-Type":"application/json"},...options});const body=await response.json();if(!response.ok)throw new Error(body.error||"Request failed.");return body}
 function toast(message,isError=false){const el=document.querySelector("#toast");el.textContent=message;el.style.background=isError?"#ffd5d1":"#efffd0";el.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove("show"),2500)}
 function formatDate(value){return new Intl.DateTimeFormat("en",{month:"short",day:"numeric",year:"numeric"}).format(new Date(value.replace(" ","T")+"Z"))}
